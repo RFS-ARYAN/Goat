@@ -1,17 +1,3 @@
-let createCanvas, loadImage, registerFont;
-let canvasAvailable = false;
-try {
-  const canvas = require("canvas");
-  createCanvas = canvas.createCanvas;
-  loadImage = canvas.loadImage;
-  registerFont = canvas.registerFont;
-  canvasAvailable = true;
-} catch (err) {
-  createCanvas = null;
-  loadImage = null;
-  registerFont = null;
-  canvasAvailable = false;
-}
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
@@ -31,24 +17,14 @@ function levelToExp(level) {
 
 function getRankBadge(rank) {
   switch (rank) {
-    case 1: return "🥇";
-    case 2: return "🥈";
-    case 3: return "🥉";
+    case 1: return "1st";
+    case 2: return "2nd";
+    case 3: return "3rd";
     default: return `#${rank}`;
   }
 }
 
-function createProgressBar(percent, length = 20) {
-  const filled = Math.round(percent * length);
-  const empty = length - filled;
-  return "█".repeat(filled) + "░".repeat(empty);
-}
-
-async function makeRankCard(userData, level, exp, requiredExp, rank, total) {
-  if (!canvasAvailable || !createCanvas || !loadImage) {
-    return null;
-  }
-  
+async function makeRankCard(createCanvas, loadImage, userData, level, exp, requiredExp, rank, total) {
   try {
     const canvas = createCanvas(920, 310);
     const ctx = canvas.getContext("2d");
@@ -59,7 +35,7 @@ async function makeRankCard(userData, level, exp, requiredExp, rank, total) {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const pathAvt = path.join(tmpDir, `${userData.userID}_avatar.png`);
+    const pathAvt = path.join(tmpDir, `${userData.userID}_avatar_${Date.now()}.png`);
     try {
       const getAvtmot = await axios.get(
         `https://graph.facebook.com/${userData.userID}/picture?width=720&height=720&access_token=6628568379|c1e620fa708a1d5696fb991c1bde5662`,
@@ -67,20 +43,15 @@ async function makeRankCard(userData, level, exp, requiredExp, rank, total) {
       );
       fs.writeFileSync(pathAvt, Buffer.from(getAvtmot.data, "binary"));
     } catch {
-      const defaultAvatar = path.join(__dirname, "assest", "default-avatar.png");
-      if (fs.existsSync(defaultAvatar)) {
-        fs.copyFileSync(defaultAvatar, pathAvt);
-      } else {
-        const placeholderCanvas = createCanvas(200, 200);
-        const pCtx = placeholderCanvas.getContext("2d");
-        pCtx.fillStyle = "#333";
-        pCtx.fillRect(0, 0, 200, 200);
-        pCtx.fillStyle = "#fff";
-        pCtx.font = "bold 80px sans-serif";
-        pCtx.textAlign = "center";
-        pCtx.fillText("?", 100, 130);
-        fs.writeFileSync(pathAvt, placeholderCanvas.toBuffer("image/png"));
-      }
+      const placeholderCanvas = createCanvas(200, 200);
+      const pCtx = placeholderCanvas.getContext("2d");
+      pCtx.fillStyle = "#333";
+      pCtx.fillRect(0, 0, 200, 200);
+      pCtx.fillStyle = "#fff";
+      pCtx.font = "bold 80px sans-serif";
+      pCtx.textAlign = "center";
+      pCtx.fillText("?", 100, 130);
+      fs.writeFileSync(pathAvt, placeholderCanvas.toBuffer("image/png"));
     }
 
     const avatar = await loadImage(pathAvt);
@@ -112,9 +83,9 @@ async function makeRankCard(userData, level, exp, requiredExp, rank, total) {
     ctx.fillStyle = "#00ffc3";
     ctx.shadowColor = "#00ffc3";
     ctx.shadowBlur = 10;
-    ctx.fillText(`🏅 Level ${level}`, 280, 130);
-    ctx.fillText(`🎖 Rank: ${getRankBadge(rank)} of ${total}`, 280, 170);
-    ctx.fillText(`📈 EXP: ${exp} / ${requiredExp}`, 280, 210);
+    ctx.fillText(`Level ${level}`, 280, 130);
+    ctx.fillText(`Rank: ${getRankBadge(rank)} of ${total}`, 280, 170);
+    ctx.fillText(`EXP: ${exp} / ${requiredExp}`, 280, 210);
     ctx.shadowBlur = 0;
 
     const percent = Math.min(exp / requiredExp, 1);
@@ -139,7 +110,7 @@ async function makeRankCard(userData, level, exp, requiredExp, rank, total) {
     ctx.font = "16px sans-serif";
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "right";
-    ctx.fillText("© Aryan Rayhan", 900 - 20, 310 - 20);
+    ctx.fillText("Aryan Rayhan", 900 - 20, 310 - 20);
 
     try { fs.unlinkSync(pathAvt); } catch {}
     return canvas.toBuffer("image/png");
@@ -169,71 +140,66 @@ module.exports = {
   },
 
   onStart: async function ({ api, event, args, message, usersData }) {
-    let targetID;
-    if (event.type === "message_reply") {
-      targetID = event.messageReply.senderID;
-    } else if (Object.keys(event.mentions || {}).length > 0) {
-      targetID = Object.keys(event.mentions)[0];
-    } else if (!isNaN(args[0])) {
-      targetID = args[0];
-    } else {
-      targetID = event.senderID;
-    }
-
-    const allUsers = await usersData.getAll();
-    const sortedUsers = allUsers
-      .map(u => ({ id: u.userID, exp: u.exp || 0 }))
-      .sort((a, b) => b.exp - a.exp);
-    const rankPosition = sortedUsers.findIndex(u => u.id === targetID) + 1;
-    const totalUsers = sortedUsers.length;
-    const userData = await usersData.get(targetID);
-
-    if (!userData) {
-      return message.reply("❌ User data not found.");
-    }
-
-    const exp = userData.exp || 0;
-    const level = expToLevel(exp);
-    const nextExp = levelToExp(level + 1);
-    const currentExp = levelToExp(level);
-    const requiredExp = nextExp - currentExp;
-    const progressExp = exp - currentExp;
-    const percent = Math.min(progressExp / requiredExp, 1);
-
-    const imageBuffer = await makeRankCard(
-      { name: userData.name, userID: targetID },
-      level,
-      progressExp,
-      requiredExp,
-      rankPosition,
-      totalUsers
-    );
-
-    if (imageBuffer) {
-      const filePath = path.join(tmpDir, `rank_card_${targetID}.png`);
-      fs.writeFileSync(filePath, imageBuffer);
-
-      return message.reply({
-        body: `🌟 Rank Card for ${userData.name}`,
-        attachment: fs.createReadStream(filePath)
-      }, () => {
-        try { fs.unlinkSync(filePath); } catch {}
-      });
-    } else {
-      const progressBar = createProgressBar(percent);
-      const textRank = `
-╔══════════════════════════╗
-║    🌟 RANK CARD 🌟       ║
-╠══════════════════════════╣
-║ 👤 ${userData.name}
-║ 🏅 Level: ${level}
-║ 🎖 Rank: ${getRankBadge(rankPosition)} of ${totalUsers}
-║ 📈 EXP: ${progressExp} / ${requiredExp}
-║ ${progressBar} ${Math.floor(percent * 100)}%
-╚══════════════════════════╝
-      `.trim();
+    try {
+      const { createCanvas, loadImage } = require("@napi-rs/canvas");
       
-      return message.reply(textRank);
+      let targetID;
+      if (event.type === "message_reply") {
+        targetID = event.messageReply.senderID;
+      } else if (Object.keys(event.mentions || {}).length > 0) {
+        targetID = Object.keys(event.mentions)[0];
+      } else if (!isNaN(args[0])) {
+        targetID = args[0];
+      } else {
+        targetID = event.senderID;
+      }
+
+      const allUsers = await usersData.getAll();
+      const sortedUsers = allUsers
+        .map(u => ({ id: u.userID, exp: u.exp || 0 }))
+        .sort((a, b) => b.exp - a.exp);
+      const rankPosition = sortedUsers.findIndex(u => u.id === targetID) + 1;
+      const totalUsers = sortedUsers.length;
+      const userData = await usersData.get(targetID);
+
+      if (!userData) {
+        return message.reply("❌ User data not found.");
+      }
+
+      const exp = userData.exp || 0;
+      const level = expToLevel(exp);
+      const nextExp = levelToExp(level + 1);
+      const currentExp = levelToExp(level);
+      const requiredExp = nextExp - currentExp;
+      const progressExp = exp - currentExp;
+
+      const imageBuffer = await makeRankCard(
+        createCanvas,
+        loadImage,
+        { name: userData.name, userID: targetID },
+        level,
+        progressExp,
+        requiredExp,
+        rankPosition,
+        totalUsers
+      );
+
+      if (imageBuffer) {
+        const filePath = path.join(tmpDir, `rank_card_${targetID}_${Date.now()}.png`);
+        fs.writeFileSync(filePath, imageBuffer);
+
+        return message.reply({
+          body: "",
+          attachment: fs.createReadStream(filePath)
+        }, () => {
+          try { fs.unlinkSync(filePath); } catch {}
+        });
+      } else {
+        return message.reply("❌ | Failed to generate rank card.");
+      }
+    } catch (err) {
+      console.error("rank.js error:", err);
+      return message.reply("❌ | Failed to generate rank card.");
     }
   }
 };

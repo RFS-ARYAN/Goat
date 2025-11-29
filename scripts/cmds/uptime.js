@@ -1,20 +1,14 @@
 const os = require("os");
 const pr = require("process");
-const f = require("fs");
+const fs = require("fs");
+const path = require("path");
 const pkg = require("../../package.json");
-let createCanvas;
-try {
-  createCanvas = require("canvas").createCanvas;
-} catch (err) {
-  createCanvas = null;
-}
-const p = require("path");
 
 module.exports = {
   config: {
     name: "uptime",
     aliases: ["upt", "status", "up"],
-    version: "0.0.2",
+    version: "1.0.0",
     author: "ArYAN",
     cooldown: 5,
     role: 0,
@@ -27,6 +21,8 @@ module.exports = {
 
   onStart: async function ({ api, event }) {
     try {
+      const { createCanvas } = require("@napi-rs/canvas");
+      
       const systemUptime = os.uptime();
       const botUptime = process.uptime();
       const systemUptimeFormatted = formatUptime(systemUptime);
@@ -52,25 +48,76 @@ module.exports = {
       const memUsage = process.memoryUsage();
       const heapUsed = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
 
-      const text =
-        `━━━━ GoatBot Status ━━━━\n\n` +
-        `⏰ Bot Uptime: ${botUptimeFormatted}\n` +
-        `🖥️ System Uptime: ${systemUptimeFormatted}\n` +
-        `💻 CPU: ${cpuModel} (${cpuCores} cores)\n` +
-        `📊 RAM: ${usedMem.toFixed(1)} / ${totalMem.toFixed(1)} MB (${(ramPercent * 100).toFixed(1)}%)\n` +
-        `🔧 Platform: ${platform}\n` +
-        `📦 Node.js: ${nodeVersion}\n` +
-        `🏠 Host: ${hostname}\n` +
-        `📡 Ping: ${ping} ms\n` +
-        `💾 Memory (Bot): ${heapUsed} MB\n` +
-        `👨‍💻 Developer: Aryan Rayhan\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━`;
+      const width = 1200, height = 750;
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext("2d");
 
-      api.sendMessage(text, event.threadID, event.messageID);
+      const bg = "#0b0f1c";
+      const glow = "#00ffe1";
+      const accentBlue = "#33ccff";
+      const accentGreen = "#33ff99";
+      const developerColor = "#ff8800";
+      const softWhite = "#eeeeee";
+
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 60;
+      ctx.fillStyle = "#111a25";
+      roundRect(ctx, 80, 50, 1040, 640, 40, true, false);
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = accentBlue;
+      ctx.font = "bold 50px sans-serif";
+      ctx.fillText(`GoatBot | ${pkg.version}`, 120, 140);
+
+      const info = [
+        ["Uptime Bot", botUptimeFormatted],
+        ["Uptime System", systemUptimeFormatted],
+        ["CPU", `${cpuModel.substring(0, 35)} (${cpuCores} cores)`],
+        ["RAM Usage", `${usedMem.toFixed(1)} MB / ${totalMem.toFixed(1)} MB (${(ramPercent * 100).toFixed(2)}%)`],
+        ["Platform", platform],
+        ["Node.js", nodeVersion],
+        ["Hostname", hostname],
+        ["Ping", `${ping} ms`],
+        ["Memory", `${heapUsed} MB`],
+        ["Developer", "Aryan Rayhan"],
+      ];
+
+      ctx.font = "22px sans-serif";
+      info.forEach((item, i) => {
+        if (item[0] === "Developer") {
+          ctx.fillStyle = developerColor;
+          ctx.fillText(item[0], 130, 210 + i * 50);
+          ctx.fillStyle = softWhite;
+          ctx.fillText(item[1], 400, 210 + i * 50);
+        } else {
+          ctx.fillStyle = accentGreen;
+          ctx.fillText(item[0], 130, 210 + i * 50);
+          ctx.fillStyle = softWhite;
+          ctx.fillText(item[1], 400, 210 + i * 50);
+        }
+      });
+
+      drawCircularRam(ctx, 900, 320, 100, ramPercent, accentBlue);
+
+      const outDir = path.join(__dirname, "tmp");
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      const outPath = path.join(outDir, `uptime_${Date.now()}.png`);
+
+      const buffer = canvas.toBuffer("image/png");
+      fs.writeFileSync(outPath, buffer);
+
+      api.sendMessage({
+        body: "",
+        attachment: fs.createReadStream(outPath),
+      }, event.threadID, () => {
+        try { fs.unlinkSync(outPath); } catch {}
+      }, event.messageID);
 
     } catch (err) {
       console.error("uptime.js error:", err);
-      api.sendMessage("❌ | Failed to get bot status.", event.threadID, event.messageID);
+      api.sendMessage("❌ | Failed to generate bot status.", event.threadID, event.messageID);
     }
 
     function formatUptime(seconds) {
@@ -110,9 +157,11 @@ module.exports = {
 
       ctx.fillStyle = "#eeeeee";
       ctx.font = "20px sans-serif";
-      ctx.fillText("RAM Usage", x - 55, y - 10);
+      ctx.textAlign = "center";
+      ctx.fillText("RAM Usage", x, y - 10);
       ctx.font = "bold 26px sans-serif";
-      ctx.fillText(`${(percent * 100).toFixed(1)}%`, x - 47, y + 25);
+      ctx.fillText(`${(percent * 100).toFixed(1)}%`, x, y + 25);
+      ctx.textAlign = "left";
     }
   },
 };

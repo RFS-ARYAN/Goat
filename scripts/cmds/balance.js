@@ -1,17 +1,3 @@
-let createCanvas, loadImage, registerFont;
-let canvasAvailable = false;
-try {
-  const canvas = require("canvas");
-  createCanvas = canvas.createCanvas;
-  loadImage = canvas.loadImage;
-  registerFont = canvas.registerFont;
-  canvasAvailable = true;
-} catch (err) {
-  createCanvas = null;
-  loadImage = null;
-  registerFont = null;
-  canvasAvailable = false;
-}
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
@@ -36,15 +22,7 @@ function drawHexagon(ctx, cx, cy, size, fillColor, strokeColor) {
 }
 
 let bgIndex = 0;
-const bgColors = [
-  "#1a1236", "#2c1c4f", "#111a21"
-];
-
-function createProgressBar(percent, length = 20) {
-  const filled = Math.round(percent * length);
-  const empty = length - filled;
-  return "█".repeat(filled) + "░".repeat(empty);
-}
+const bgColors = ["#1a1236", "#2c1c4f", "#111a21"];
 
 module.exports = {
   config: {
@@ -63,6 +41,8 @@ module.exports = {
 
   onStart: async function({ message, usersData, event, api }) {
     try {
+      const { createCanvas, loadImage } = require("@napi-rs/canvas");
+      
       let targetID;
       if (event.type === "message_reply" && event.messageReply) {
         targetID = event.messageReply.senderID;
@@ -78,25 +58,6 @@ module.exports = {
       const level = userData ? userData.level || 1 : 1;
       const xp = userData ? userData.xp || 0 : 0;
       const xpForNext = 100 + level * 50;
-      const xpPercent = Math.min(xp / xpForNext, 1);
-
-      if (!canvasAvailable || !createCanvas || !loadImage) {
-        const progressBar = createProgressBar(xpPercent);
-        const textBalance = `
-╔═══════════════════════════╗
-║     💰 BALANCE 💰         ║
-╠═══════════════════════════╣
-║ 👤 ${targetName}
-║ 🆔 UID: ${targetID}
-║ 💵 Money: ${targetMoney}$
-║ 🏅 Level: ${level}
-║ 📈 XP: ${xp} / ${xpForNext}
-║ ${progressBar} ${Math.floor(xpPercent * 100)}%
-╚═══════════════════════════╝
-        `.trim();
-        
-        return message.reply(textBalance);
-      }
 
       const profileX = 675;
       const profileY = 250;
@@ -120,7 +81,7 @@ module.exports = {
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, 150);
 
-      ctx.font = "bold 70px 'Segoe UI', sans-serif";
+      ctx.font = "bold 70px sans-serif";
       ctx.textAlign = "center";
       ctx.shadowColor = "#00c9ff";
       ctx.shadowBlur = 15;
@@ -132,7 +93,7 @@ module.exports = {
       const moneyY = height / 2;
       const hexSize = 130;
       drawHexagon(ctx, moneyX, moneyY, hexSize, "#112e4f", "#00c9ff");
-      ctx.font = "bold 50px 'Segoe UI', sans-serif";
+      ctx.font = "bold 50px sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.fillText(`${targetMoney}$`, moneyX, moneyY + 15);
 
@@ -172,11 +133,11 @@ module.exports = {
         ctx.restore();
       }
 
-      ctx.font = "bold 26px 'Segoe UI', sans-serif";
+      ctx.font = "bold 26px sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.fillText(targetName, profileX, profileY + profileSize / 2 + 30);
-      ctx.font = "20px 'Segoe UI', sans-serif";
+      ctx.font = "20px sans-serif";
       ctx.fillStyle = "#bbbbbb";
       ctx.fillText(`UID: ${targetID}`, profileX, profileY + profileSize / 2 + 55);
 
@@ -194,37 +155,27 @@ module.exports = {
       ctx.fillStyle = xpGradient;
       ctx.fillRect(barX, barY, fillWidth, barHeight);
 
-      ctx.font = "18px 'Segoe UI', sans-serif";
+      ctx.font = "18px sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.fillText(`Level ${level} - XP: ${xp} / ${xpForNext}`, barX + barWidth / 2, barY + barHeight - 5);
 
-      ctx.font = "16px 'Segoe UI', sans-serif";
+      ctx.font = "16px sans-serif";
       ctx.fillStyle = "#888888";
       ctx.textAlign = "right";
-      ctx.fillText("© Aryan Rayhan", width - 20, height - 20);
+      ctx.fillText("Aryan Rayhan", width - 20, height - 20);
 
-      const outPath = path.join(tmpDir, "balance.png");
-      const out = fs.createWriteStream(outPath);
-      const stream = canvas.createPNGStream();
-      stream.pipe(out);
-      await new Promise(resolve => out.on("finish", resolve));
+      const outPath = path.join(tmpDir, `balance_${Date.now()}.png`);
+      const buffer = canvas.toBuffer("image/png");
+      fs.writeFileSync(outPath, buffer);
 
       await api.sendMessage({ body: "", attachment: fs.createReadStream(outPath) }, event.threadID, () => {
         try { fs.unlinkSync(outPath); } catch {}
         try { fs.unlinkSync(pathAvt1); } catch {}
-      });
+      }, event.messageID);
     } catch (err) {
-      console.error(err);
-      const progressBar = createProgressBar(0);
-      return message.reply(`
-╔═══════════════════════════╗
-║     💰 BALANCE 💰         ║
-╠═══════════════════════════╣
-║ ❌ Error loading balance
-║ Please try again later
-╚═══════════════════════════╝
-      `.trim());
+      console.error("balance.js error:", err);
+      return message.reply("❌ | Failed to generate balance card.");
     }
   }
 };
