@@ -21,7 +21,6 @@ let Canvas = null;
 try {
         Canvas = defaultRequire("canvas");
 } catch (err) {
-        console.log("Canvas module not available - some image features will be disabled");
 }
 const https = defaultRequire("https");
 
