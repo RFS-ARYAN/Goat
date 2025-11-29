@@ -15,6 +15,20 @@
 process.on('unhandledRejection', error => console.log(error));
 process.on('uncaughtException', error => console.log(error));
 
+// ———————————————— FIX FOR RENDER DEPLOYMENT ———————————————— //
+const express = require("express");
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+    res.send("Goat Bot is Active and Running!");
+});
+
+app.listen(port, () => {
+    console.log(`Dummy server is running on port ${port}`);
+});
+// —————————————————————————————————————————————————————————— //
+
 const axios = require("axios");
 const fs = require("fs-extra");
 const google = require("googleapis").google;
